@@ -28,10 +28,16 @@ First, import the Cosdata client and establish a connection:
 from cosdata import CosdataClient
 
 # Initialize the client with your server details
-client = CosdataClient(
-    host="localhost",
-    port=8443,
-    admin_key="your-admin-key"
+client = Client(
+    host = "http://127.0.0.1:8443",
+)
+
+# Full parameter client creation
+client = Client(
+    host = "http://127.0.0.1:8443",
+    username = "admin",
+    password = "admin",
+    verify = False  # Whether to verify SSL certificates
 )
 ```
 
@@ -40,15 +46,70 @@ client = CosdataClient(
 Create a new vector collection:
 
 ```python
-# Create a collection for storing 768-dimensional vectors
+# Create a collection for storing 3-dimensional vectors
 collection = client.create_collection(
-    name="my_embeddings",
-    description="Collection for storing document embeddings",
-    dense_vector={
-        "enabled": True,
-        "auto_create_index": True,
-        "dimension": 768
-    }
+    name="documents",
+    description="Collection for document embeddings",
+    dimension=3  # Dimensionality of vectors to be stored
+)
+```
+
+### Listing Collections
+
+Retrieve a list of all collections:
+
+```python
+# Retrieve a list of all collections in the vector database
+collections = client.list_collections()
+```
+
+### Getting a Collection
+
+Retrieve an existing collection by name:
+
+```python
+# Get an existing collection by name
+collection = client.get_collection(collection_name="documents")
+```
+
+### Getting Collection Information
+
+Retrieve metadata and details about a collection:
+
+```python
+# Get information about an existing collection
+info = collection.get_info()
+```
+
+### Iterating Over Collections
+
+Iterate over all available collections:
+
+```python
+# Iterate over all collections in the vector database
+for collection in client.collections():
+    print(collection.get_info)
+```
+
+### Creating an Index
+
+Create an index for efficient vector search:
+
+```python
+# Create a simple index
+index = collection.create_index(
+    distance_metric="cosine"
+)
+
+# Create an index with specified parameters
+index = collection.create_index(
+    distance_metric="cosine",      # Similarity metric for comparisons
+    num_layers=7,                  # Number of layers in the index
+    max_cache_size=1000,           # Maximum cache size for indexing
+    ef_construction=512,           # Size of dynamic list during index construction
+    ef_search=256,                 # Search depth for nearest neighbors
+    neighbors_count=32,            # Number of neighbors per layer
+    level_0_neighbors_count=64     # Number of neighbors at the base level
 )
 ```
 
@@ -57,36 +118,26 @@ collection = client.create_collection(
 Add vectors to your collection:
 
 ```python
-# Single vector insertion
-client.insert_vector(
-    collection_name="my_embeddings",
-    vector_id="doc1",
-    vector=[0.1, 0.2, 0.3, ...],  # 768-dimensional vector
-    metadata={
-        "title": "Sample Document",
-        "category": "documentation",
-        "tags": ["example", "getting-started"]
-    }
-)
-
-# Batch insertion
+#  Single and Batch insertion method is similar
 vectors = [
     {
         "id": "doc2",
-        "values": [0.2, 0.3, 0.4, ...],
-        "metadata": {"title": "Another Document"}
+        "values": [0.2, 0.3, 0.4],
     },
     {
         "id": "doc3",
-        "values": [0.3, 0.4, 0.5, ...],
-        "metadata": {"title": "Third Document"}
+        "values": [0.3, 0.4, 0.5],
     }
 ]
 
-client.batch_insert_vectors(
-    collection_name="my_embeddings",
-    vectors=vectors
+index = collection.create_index(
+    distance_metric="cosine" 
 )
+
+# Upsert all vectors in a single transaction (SDK will handle batching)
+with index.transaction() as txn: 
+    txn.upsert(vectors)  
+
 ```
 
 ### Searching Vectors
@@ -95,22 +146,19 @@ Perform similarity search:
 
 ```python
 # Search for similar vectors
-results = client.search(
-    collection_name="my_embeddings",
-    query_vector=[0.1, 0.2, 0.3, ...],
-    limit=5,
-    include_metadata=True
+results = index.query(
+    vector=[0.1, 0.2, 0.3, ...],
+    nn_count=2
 )
 
-# Process search results
+# Search for vector by id
+results = index.fetch_vector(
+    vector_id=1  # Vector id can be string or int
+) 
+
+# Print results
 for result in results:
-    vector_id = result["id"]
-    similarity = result["similarity"]
-    metadata = result["metadata"]
-    
-    print(f"Vector ID: {vector_id}")
-    print(f"Similarity: {similarity}")
-    print(f"Metadata: {metadata}")
+    print(f"Query result: {results}")
 ```
 
 ### Using Transactions
@@ -119,170 +167,24 @@ Perform operations within a transaction:
 
 ```python
 # Start a transaction
-transaction = client.start_transaction(collection_name="my_embeddings")
+transaction = client.get_collection("documents").create_index(distance_metric="cosine").transaction()
 
 try:
-    # Perform operations within the transaction
-    client.insert_vector(
-        collection_name="my_embeddings",
-        vector_id="doc4",
-        vector=[0.4, 0.5, 0.6, ...],
-        metadata={"title": "Fourth Document"},
-        transaction_id=transaction["transaction_id"]
-    )
+     # Upsert multiple vectors within the transaction
+    vectors = [
+        {"id": "doc2","values": [0.2, 0.3, 0.4]},
+        {"id": "doc2","values": [0.3, 0.4, 0.5]}
+    ]
     
-    # Commit the transaction
-    client.commit_transaction(
-        collection_name="my_embeddings",
-        transaction_id=transaction["transaction_id"]
-    )
+    transaction.upsert(vectors)
+    
+    # Commit the transaction (save changes)
+    transaction.commit()
+    print("Transaction committed successfully.")
 except Exception as e:
-    # Abort the transaction on error
-    client.abort_transaction(
-        collection_name="my_embeddings",
-        transaction_id=transaction["transaction_id"]
-    )
-    raise e
-```
-
-### Creating and Managing Indexes
-
-Create and manage search indexes:
-
-```python
-# Create an HNSW index
-client.create_index(
-    collection_name="my_embeddings",
-    index_name="hnsw_index",
-    index_type="hnsw",
-    parameters={
-        "M": 16,
-        "efConstruction": 200,
-        "efSearch": 100,
-        "metric": "cosine"
-    }
-)
-
-# List indexes
-indexes = client.list_indexes(collection_name="my_embeddings")
-```
-
-## Advanced Usage
-
-### Filtering Search Results
-
-Filter search results based on metadata:
-
-```python
-# Search with metadata filters
-results = client.search(
-    collection_name="my_embeddings",
-    query_vector=[0.1, 0.2, 0.3, ...],
-    filter={
-        "category": "documentation",
-        "tags": {"$in": ["example"]}
-    },
-    limit=5
-)
-```
-
-### Hybrid Search
-
-Combine vector search with text search:
-
-```python
-# Hybrid search
-results = client.hybrid_search(
-    collection_name="my_embeddings",
-    query_vector=[0.1, 0.2, 0.3, ...],
-    query_text="sample documentation",
-    hybrid_weight=0.7,  # 70% vector search, 30% text search
-    limit=5
-)
-```
-
-### Batch Operations
-
-Perform batch operations for better performance:
-
-```python
-# Generate some example vectors
-import numpy as np
-
-vectors = []
-for i in range(1000):
-    # Create a random 768-dimensional vector
-    vector_values = np.random.rand(768).tolist()
-    
-    vectors.append({
-        "id": f"batch_doc_{i}",
-        "values": vector_values,
-        "metadata": {
-            "batch_id": i // 100,
-            "timestamp": "2024-11-23T12:00:00Z"
-        }
-    })
-
-# Insert vectors in batches
-batch_size = 100
-for i in range(0, len(vectors), batch_size):
-    batch = vectors[i:i+batch_size]
-    
-    # Start a transaction
-    transaction = client.start_transaction(collection_name="my_embeddings")
-    
-    try:
-        # Insert batch
-        client.batch_insert_vectors(
-            collection_name="my_embeddings",
-            vectors=batch,
-            transaction_id=transaction["transaction_id"]
-        )
-        
-        # Commit transaction
-        client.commit_transaction(
-            collection_name="my_embeddings",
-            transaction_id=transaction["transaction_id"]
-        )
-        
-        print(f"Inserted batch {i//batch_size + 1}/{len(vectors)//batch_size + 1}")
-    except Exception as e:
-        # Abort transaction on error
-        client.abort_transaction(
-            collection_name="my_embeddings",
-            transaction_id=transaction["transaction_id"]
-        )
-        print(f"Error inserting batch: {e}")
-```
-
-## Error Handling
-
-Implement proper error handling in your applications:
-
-```python
-from cosdata.exceptions import (
-    CosdataConnectionError,
-    CosdataAuthenticationError,
-    CosdataResourceNotFoundError,
-    CosdataTransactionError
-)
-
-try:
-    # Perform Cosdata operations
-    client.search(
-        collection_name="non_existent_collection",
-        query_vector=[0.1, 0.2, 0.3, ...]
-    )
-except CosdataResourceNotFoundError as e:
-    print(f"Collection not found: {e}")
-except CosdataAuthenticationError as e:
-    print(f"Authentication error: {e}")
-except CosdataConnectionError as e:
-    print(f"Connection error: {e}")
-except CosdataTransactionError as e:
-    print(f"Transaction error: {e}")
-except Exception as e:
-    print(f"Unexpected error: {e}")
+    # Abort the transaction on error (revert changes)
+    transaction.abort()
+    print(f"Transaction aborted due to error: {e}")
 ```
 
 ## Best Practices

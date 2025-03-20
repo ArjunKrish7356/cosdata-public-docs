@@ -3,44 +3,72 @@ title: Installation & Quick Start
 description: Install Cosdata and get up and running quickly with your first vector database
 ---
 
-This guide will walk you through installing Cosdata and running your first test to verify everything is working correctly.
+**This guide will walk you through installation and setup of Cosdata**
 
-## Prerequisites
+## Installation Guide
 
-Before installing Cosdata, ensure you have the following:
 
-- Git
-- Rust (version 1.81.0 or higher)
-- Cargo (Rust's package manager, toolchain version 1.81.0 or higher)
-- A C++ compiler (GCC 4.8+ or Clang 3.4+)
-- Python 3.8+ (for running test scripts)
+### **Quick Install (Linux)**  
 
-## Installation Steps
+For a simple one-step installation on Linux, run:  
 
-### Building Cosdata as a Developer
+```bash
+curl -sL https://cosdata.io/install.sh | bash
+```  
 
-1. **Clone the Repository**
+This script will handle all dependencies and set up Cosdata automatically.  
+
+---
+
+### **Install via Docker (Mac & Windows)**  
+
+For Mac & Windows, use our Docker-based installation:  
+
+1. Ensure Docker is installed and running.  
+2. Pull and run the Cosdata image from our registry.  
+
+```bash
+docker run -d --name cosdata -p 8080:8080 cosdata/cosdata:latest
+```  
+
+**Note:** Full Docker setup instructions are available in [Docker Install Docs](#).  
+
+---
+
+### **Developer Installation (Build from Source)**  
+
+For developers looking to modify or contribute to Cosdata, follow these steps:  
+    
+
+1. Install Rust and Cargo:  
 
    ```bash
-   git clone https://github.com/cosdata/cosdata.git
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```  
+
+2. Ensure dependencies are installed:  
+   - **Linux**: `libssl-dev`, `pkg-config`  
+   - **Mac**: `brew install openssl pkg-config`  
+
+3. Clone and build Cosdata:  
+
+   ```bash
+   git clone https://github.com/cosdata-ai/cosdata.git
    cd cosdata
-   ```
-
-2. **Build the Project**
-
-   ```bash
    cargo build --release
-   ```
+   ```  
 
-3. **Install the Binary**
+4. Start the server:
 
-   ```bash
-   cargo install --path .
-   ```
+    ```bash
+    cargo run -- --admin-key 12345
+    ```
 
-> **Need Help?** If you encounter any issues during installation, join our <a href="https://discord.gg/XMdtTBrtKT" target="_blank" rel="noopener noreferrer">Discord community</a> for real-time support from the Cosdata team and community members.
+---
 
-### Running Cosdata
+This version strictly follows your preferred format. Let me know if you need any modifications! 🚀
+
+## Running Cosdata
 
 Start the Cosdata server with your admin key:
 
@@ -58,18 +86,23 @@ You should see log lines similar to the following:
 [2025-02-21T02:30:29Z INFO  cosdata::grpc::server] gRPC server listening on [::1]:50051
 ```
 
+---
+
+## **Need Help?**  
+If you encounter any issues during installation, join our [Discord community](https://discord.gg/XMdtTBrtKT) for real-time support from the Cosdata team and community members.
+
+---
+
 ## Configuration Options
 
 Cosdata can be configured using command-line arguments or a configuration file:
 
-### Command-line Arguments
-
+### **Command-line Arguments**
 ```bash
 cosdata --admin-key <your-admin-key> --port 8443 --data-dir /path/to/data
 ```
 
-### Configuration File
-
+### **Configuration File**
 Create a `config.toml` file:
 
 ```toml
@@ -84,6 +117,8 @@ Then run Cosdata with:
 ```bash
 cosdata --config config.toml
 ```
+
+---
 
 ## Quick Start: Testing Your Installation
 
@@ -132,50 +167,42 @@ This script loads sample datasets and performs similarity searches to demonstrat
 Let's create a simple collection and add some vectors using the Python SDK:
 
 ```python
-from cosdata import CosdataClient
+from cosdata.client import Client
 
 # Connect to the Cosdata server
-client = CosdataClient(
-    host="localhost",
-    port=8443,
-    admin_key="your-admin-key"
+client = Client(
+    host = "http://127.0.0.1:8443",
 )
 
 # Create a collection for document embeddings
 collection = client.create_collection(
     name="documents",
     description="Collection for document embeddings",
-    dense_vector={
-        "enabled": True,
-        "auto_create_index": True,
-        "dimension": 768
-    }
+    dimension=3  # Dimensionality of vectors to be stored
 )
 
-# Add some vectors
-client.insert_vector(
-    collection_name="documents",
-    vector_id="doc1",
-    vector=[0.1, 0.2, 0.3, ...],  # 768-dimensional vector
-    metadata={
-        "title": "Introduction to Vector Databases",
-        "category": "technology"
-    }
+index = collection.create_index(
+    distance_metric="cosine" 
 )
+
+vectors = [
+    {"id": "doc1", "values": [0.1, 0.2, 0.3]}, 
+    {"id": "doc2", "values": [0.1, 0.7, 0.2]},
+]
+
+# Upsert all vectors in a single transaction (SDK will handle batching)
+with index.transaction() as txn: 
+    txn.upsert(vectors)  
 
 # Search for similar vectors
-results = client.search(
-    collection_name="documents",
-    query_vector=[0.1, 0.2, 0.3, ...],
-    limit=5,
-    include_metadata=True
+results = index.query(
+    vector=[0.1, 0.2, 0.3],
+    nn_count=1
 )
 
 # Print results
 for result in results:
-    print(f"Document: {result['id']}")
-    print(f"Similarity: {result['similarity']}")
-    print(f"Metadata: {result['metadata']}")
+    print(f"Query result: {results}")
 ```
 
 ## Verifying Your Installation
