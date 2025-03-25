@@ -28,7 +28,7 @@ For Mac & Windows, use our Docker-based installation:
 2. Pull and run the Cosdata image from our registry.  
 
 ```bash
-docker run -d --name cosdata -p 8080:8080 cosdata/cosdata:latest
+docker run -it --name cosdata -p 8443:8443 -p 50051:50051 arjun7356/cosdata:latest
 ```  
 
 **Note:** Full Docker setup instructions are available in [Docker Install Docs](#).  
